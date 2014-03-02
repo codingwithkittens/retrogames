@@ -13,8 +13,8 @@ main = SDL.withInit [SDL.InitEverything] $ do
 
  where
 
-  go screen s w = do
-    (x, w', s') <- stepSession w s ()
+  go screen session wire = do
+    (x, wire', session') <- stepSession wire session ()
 
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>=
         SDL.fillRect screen Nothing
@@ -23,7 +23,7 @@ main = SDL.withInit [SDL.InitEverything] $ do
         SDL.fillRect screen (Just $ SDL.Rect (round x) 0 50 50)
 
     SDL.flip screen
-    go screen s' w'
+    go screen session' wire'
 
 challenge1 :: Monad m => Wire e m Double Double
 challenge1 = integral 0 . pure 20
