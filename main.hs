@@ -9,7 +9,7 @@ import Control.Wire
 -- import Control.Monad (void)
 import FRP.Netwire
 import Data.Set as Set
-import Data.Monoid (Monoid)
+--import Data.Monoid (Monoid)
 import qualified Graphics.UI.SDL as SDL
 
 newtype Xcoord = X Double deriving (Ord, Eq, Num, Real, Fractional, RealFrac)
@@ -20,16 +20,18 @@ x :: Vec -> Xcoord
 x = fst
 y :: Vec -> Ycoord
 y = snd
-newtype Angle = Double -- measured of course in radians
-data PolarVector = { theta::Angle, magnitude::Double }
 
+{-
+newtype Angle = A Double -- measured of course in radians
+data PolarVector = PolarVector { theta::Angle, magnitude::Double }
+-}
 
 -- magic constants? aka game parameters
 width = 400::Int
 height = 600::Int
 box_radius = 25 ::Int
 coeff_friction = 0.8 :: Double -- Energy lost in collisions
-gravity = -1 -- default acceleration downwards
+gravity = -1::Double -- default acceleration downwards
 -- also sprite information?
 
 render :: SDL.Surface -> (Vec, Vec) -> IO ()

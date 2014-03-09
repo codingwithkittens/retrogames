@@ -1,4 +1,5 @@
-add control of both y coord as well
-implement challenge 3
-get integral working
-
+implement collisions with walls correctly
+show velocity vector
+print info  in corner
+implement gravity?
+control via polar coords (i.e. rotation + thrust/brake)
