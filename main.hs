@@ -57,37 +57,22 @@ main =
     keys'       <- parseEvents keys
     (dt, s')    <- stepSession sess
     (state, w') <- stepWire wire dt (Right (keys', vel))
-    let ((xpos, ypos), (vx, vy)) = either (const ((0,0), (0,0))) id state
-    -- should be able to use switch and edge rather than this hacky thing
-    let vy' =
-          if ((round ypos) < 0 || (round ypos) > height)
-          then ((sign (2 * ypos < fromIntegral height)) * (abs vy))
-          else vy
-    let vx' =
-          if ((round xpos) < 0 || (round xpos) > width)
-          then ((sign (2 * xpos < fromIntegral height)) * (abs vx))
-          else vx
-    let v' = (vx', vy')
+    let (x', v') = either (const ((0,0), (0,0))) id state
     -- let v' = (vx,vy)
-    let x' = (xpos, ypos)
     render screen (x', v')
     moveblockwithinput screen s' w' v' keys'
     -- where are we keeping track of the position?
-
-sign :: Num a => Bool -> a
-sign False = -1
-sign True = 1
 
 updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, Vec)
 updateState =
     proc (keys, vel) -> do
          accel      <- acceleration -< keys
          (vx,vy)    <- arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy' - Y gravity)) -< (accel,vel)
-         x <- integral 0 -< vx
-         y <- integral 0 -< vy
-         (X x',vx') <- arr checkBounds -< (x,vx,width)
-         (Y y',vy') <- arr checkBounds -< (y,vy,height)
-         returnA -< ((x,y),(vx,vy)) 
+         xx <- integral 0 -< vx
+         yy <- integral 0 -< vy
+         (x',vx') <- arr checkBounds -< (xx,vx,width,X)
+         (y',vy') <- arr checkBounds -< (yy,vy,height,Y)
+         returnA -< ((x',y'),(vx',vy')) 
          where acceleration = 
                        let keyDown k = 
                             not . null . filter ((==k) . SDL.symKey) 
@@ -97,9 +82,9 @@ updateState =
                         <|> pure ( 0, -2) . when (keyDown SDL.SDLK_UP)
                         <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
                         <|> pure ( 0,  0)
-               checkBounds (pos,vel,bound) 
-                      | posInt < box_radius         = (fromIntegral box_radius, -1 * vel)
-                      | posInt > bound - box_radius = (fromIntegral (bound - box_radius), -1 * vel)
+               checkBounds (pos,vel,bound, f) 
+                      | posInt < box_radius         = (f (fromIntegral box_radius), -1 * vel)
+                      | posInt > bound - box_radius = (f (fromIntegral (bound - box_radius)), -1 * vel)
                       | otherwise                   = (pos,vel)
                       where posInt = (round pos)
                     
