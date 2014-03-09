@@ -90,8 +90,8 @@ updateState =
                         <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
                         <|> pure ( 0,  0)
                checkBounds (pos,vel,bound) 
-                      | posInt < 0         = ((fromIntegral box_radius), -1 * vel)
-                      | posInt > bound - box_radius = ((fromIntegral (bound - box_radius)), -1 * vel)
+                      | posInt < box_radius         = ((fromIntegral box_radius),  abs vel)
+                      | posInt > bound - box_radius = ((fromIntegral (bound - box_radius)),  (-1) * abs vel)
                       | otherwise                   = (pos,vel)
                       where posInt = (round pos)
                     
