@@ -8,14 +8,14 @@ import Prelude hiding ((.), id, null, filter)
 
 import Control.Arrow
 import Control.Wire
--- import Control.Monad (void)
 import FRP.Netwire
 import Data.Set as Set
---import Data.Monoid (Monoid)
+import Debug.Trace
 import qualified Graphics.UI.SDL as SDL
 
-newtype Xcoord = X Double deriving (Ord, Eq, Num, Real, Fractional, RealFrac)
-newtype Ycoord = Y Double deriving (Ord, Eq, Num, Real, Fractional, RealFrac)
+
+newtype Xcoord = X Double deriving (Show, Ord, Eq, Num, Real, Fractional, RealFrac)
+newtype Ycoord = Y Double deriving (Show, Ord, Eq, Num, Real, Fractional, RealFrac)
 -- not sure if Vec should be a newtype
 type Vec = (Xcoord, Ycoord)
 x :: Vec -> Xcoord
@@ -41,6 +41,7 @@ render screen (pos, vel) =
     do
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>=
         SDL.fillRect screen Nothing
+    traceIO ("trying to draw" ++ show pos)
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>=
         SDL.fillRect screen
             (Just $ SDL.Rect ((+(- box_radius)).round $ x pos) (((+)(- box_radius)).round $ y pos) (2*box_radius) (2*box_radius))
@@ -57,8 +58,12 @@ main =
     keys'       <- parseEvents keys
     (dt, s')    <- stepSession sess
     (state, w') <- stepWire wire dt (Right (keys', vel))
-    let (x', v') = either (const ((0,0), (0,0))) id state
-    -- let v' = (vx,vy)
+    -- traceIO ("state is " ++ show (Left state) ++ show (Right state))
+    traceIO ("state is " ++  show state)
+
+    let (x', v') = either (const ((X (fromIntegral width/2),Y (fromIntegral height/2)), vel)) id state
+    -- let (x',v') = return state
+    --    traceIO ("Current pos:" ++ show x' ++ "Current Vel:" ++ show v' )
     render screen (x', v')
     moveblockwithinput screen s' w' v' keys'
     -- where are we keeping track of the position?
@@ -67,12 +72,14 @@ updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, 
 updateState =
     proc (keys, vel) -> do
          accel      <- acceleration -< keys
+         --arr (\s -> traceIO ("vel0 is " ++  show s ++ "\n")) -< vel
          (vx,vy)    <- arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy' - Y gravity)) -< (accel,vel)
          xx <- integral 0 -< vx
          yy <- integral 0 -< vy
-         (x',vx') <- arr checkBounds -< (xx,vx,width,X)
-         (y',vy') <- arr checkBounds -< (yy,vy,height,Y)
-         returnA -< ((x',y'),(vx',vy')) 
+         arr (\s -> trace ("pos is " ++  show s )) -< (xx,yy)
+         (x',vx') <- arr checkBounds -< (xx,vx,width)
+         (y',vy') <- arr checkBounds -< (yy,vy,height)
+         returnA -< trace ("oldpos is " ++  show (xx,yy) ) $trace ("newpos is " ++  show (x',y') ) $ ((x',y'),(vx',vy')) 
          where acceleration = 
                        let keyDown k = 
                             not . null . filter ((==k) . SDL.symKey) 
@@ -82,9 +89,9 @@ updateState =
                         <|> pure ( 0, -2) . when (keyDown SDL.SDLK_UP)
                         <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
                         <|> pure ( 0,  0)
-               checkBounds (pos,vel,bound, f) 
-                      | posInt < box_radius         = (f (fromIntegral box_radius), -1 * vel)
-                      | posInt > bound - box_radius = (f (fromIntegral (bound - box_radius)), -1 * vel)
+               checkBounds (pos,vel,bound) 
+                      | posInt < 0         = ((fromIntegral box_radius), -1 * vel)
+                      | posInt > bound - box_radius = ((fromIntegral (bound - box_radius)), -1 * vel)
                       | otherwise                   = (pos,vel)
                       where posInt = (round pos)
                     
