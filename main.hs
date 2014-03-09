@@ -1,3 +1,4 @@
+{-# LANGUAGE Arrows #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
@@ -5,6 +6,7 @@
 -- copied from getting started with netwire and sdl
 import Prelude hiding ((.), id, null, filter)
 
+import Control.Arrow
 import Control.Wire
 -- import Control.Monad (void)
 import FRP.Netwire
@@ -78,19 +80,21 @@ sign True = 1
 
 updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, Vec)
 updateState =
-   let accel =
-          let keyDown k = not . null . filter ((==k) . SDL.symKey) in
-                pure (-2,  0) . when (keyDown SDL.SDLK_LEFT)
-            <|> pure ( 2,  0) . when (keyDown SDL.SDLK_RIGHT)
-            <|> pure ( 0, -2) . when (keyDown SDL.SDLK_UP)
-            <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
-            <|> pure ( 0,  0)
-       velocity =
-         accel *** id
-         >>> arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy'))
-       -- should maybe have better way of adding the two tuples
-   in
-   ((integral 0) *** (integral 0)) &&& id <<< velocity
+    proc (keys, vel) -> do
+         accel      <- acceleration -< keys
+         (vx,vy)    <- arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy' - Y gravity)) -< (accel,vel)
+         x <- integral 0 -< vx
+         y <- integral 0 -< vy
+         returnA -< ((x,y),(vx,vy)) 
+         where acceleration = 
+                       let keyDown k = 
+                            not . null . filter ((==k) . SDL.symKey) 
+                       in
+                            pure (-2,  0) . when (keyDown SDL.SDLK_LEFT)
+                        <|> pure ( 2,  0) . when (keyDown SDL.SDLK_RIGHT)
+                        <|> pure ( 0, -2) . when (keyDown SDL.SDLK_UP)
+                        <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
+                        <|> pure ( 0,  0)
 
 parseEvents :: Set SDL.Keysym -> IO (Set SDL.Keysym)
 parseEvents keysDown = do
