@@ -1,32 +1,95 @@
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 -- this will be something shortly
 -- copied from getting started with netwire and sdl
-import Prelude hiding ((.), id)
+import Prelude hiding ((.), id, null, filter)
 
-import Control.Applicative (pure)
 import Control.Wire
-import Control.Wire.Session
+-- import Control.Monad (void)
 import FRP.Netwire
+import Data.Set as Set
+import Data.Monoid (Monoid)
 import qualified Graphics.UI.SDL as SDL
 
-main :: IO ()
-main = SDL.withInit [SDL.InitEverything] $ do
-  screen <- SDL.setVideoMode 200 200 32 [SDL.SWSurface]
-  moveblock screen clockSession_ challenge1 0
+newtype Xcoord = X Double deriving (Ord, Eq, Num, Real, Fractional, RealFrac)
+newtype Ycoord = Y Double deriving (Ord, Eq, Num, Real, Fractional, RealFrac)
+-- not sure if Vec should be a newtype
+type Vec = (Xcoord, Ycoord)
+x :: Vec -> Xcoord
+x = fst
+y :: Vec -> Ycoord
+y = snd
+newtype Angle = Double -- measured of course in radians
+data PolarVector = { theta::Angle, magnitude::Double }
 
- where
 
-  moveblock screen s w x = do
-    (ds, s') <- stepSession s 
-    (ex, w') <- stepWire w ds (Right x)
-    let x' = either (const 0) id ex
-    
+-- magic constants? aka game parameters
+width = 400::Int
+height = 600::Int
+box_radius = 25 ::Int
+coeff_friction = 0.8 :: Double -- Energy lost in collisions
+gravity = -1 -- default acceleration downwards
+-- also sprite information?
+
+render :: SDL.Surface -> (Vec, Vec) -> IO ()
+render screen (pos, vel) = 
+    do
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>=
         SDL.fillRect screen Nothing
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>=
-        SDL.fillRect screen (Just $ SDL.Rect (round x) 0 50 50)
+        SDL.fillRect screen 
+            (Just $ SDL.Rect ((+(- box_radius)).round $ x pos) (((+)(- box_radius)).round $ y pos) (2*box_radius) (2*box_radius))
     SDL.flip screen
-    moveblock screen s' w' x'
 
-challenge1 :: (HasTime t s, Monad m) => Wire s e m Double Double
-challenge1 = integral 0 + 20
+main :: IO ()
+main = 
+  SDL.withInit [SDL.InitEverything] $ do
+  screen <- SDL.setVideoMode width height 32 [SDL.SWSurface]
+  moveblockwithinput screen clockSession_ updateState (0,0) Set.empty
 
+ where
+  moveblockwithinput screen sess wire vel keys = do
+    keys' <- parseEvents keys
+    (dt, s') <- stepSession sess 
+    (state, w') <- stepWire wire dt (Right (keys', vel))
+    let ((xpos,ypos),(vx, vy)) = either (const ((0,0), (0,0))) id state
+    -- should be able to use switch and edge rather than this hacky thing
+    let vy' = if ( (round ypos) <0 || (round ypos) > height) then ((sign (2*ypos< fromIntegral height))*(abs vy)) else vy
+    let vx' = if ( (round xpos) <0 || (round xpos) > width) then ((sign (2*xpos< fromIntegral height))*(abs vx)) else vx
+    let v' = (vx',vy')
+    -- let v' = (vx,vy)
+    let x' = (xpos,ypos)
+    render screen (x',v')
+    moveblockwithinput screen s' w' v' keys'
+    -- where are we keeping track of the position?
+
+sign:: Num a => Bool -> a
+sign False = -1
+sign True = 1
+
+updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, Vec)
+updateState = 
+        let accel = 
+                    let keyDown k = not . null . filter ((==k) . SDL.symKey)
+                    in
+                    pure (-2, 0) . when (keyDown SDL.SDLK_LEFT)
+                        <|> pure (2, 0) . when (keyDown SDL.SDLK_RIGHT)
+                        <|> pure (0, -2) . when (keyDown SDL.SDLK_UP)
+                        <|> pure (0, 2) . when (keyDown SDL.SDLK_DOWN)
+                        <|> pure (0, 0)
+            velocity = accel *** id >>> arr (\((vx,vy),(vx',vy')) -> (vx + vx',vy + vy'))
+            -- should maybe have better way of adding the two tuples
+        in 
+        ((integral 0) *** (integral 0)) &&& id <<< velocity
+
+parseEvents :: Set SDL.Keysym -> IO (Set SDL.Keysym)
+parseEvents keysDown = do
+    event <- SDL.pollEvent
+    case event of 
+        SDL.NoEvent -> return keysDown
+        SDL.KeyDown k -> parseEvents (insert k keysDown)
+        SDL.KeyUp k -> parseEvents (delete k keysDown)
+        _ -> parseEvents keysDown
+
+deriving instance Ord SDL.Keysym
