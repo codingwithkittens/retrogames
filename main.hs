@@ -35,17 +35,17 @@ gravity = -1::Double -- default acceleration downwards
 -- also sprite information?
 
 render :: SDL.Surface -> (Vec, Vec) -> IO ()
-render screen (pos, vel) = 
+render screen (pos, vel) =
     do
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>=
         SDL.fillRect screen Nothing
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>=
-        SDL.fillRect screen 
+        SDL.fillRect screen
             (Just $ SDL.Rect ((+(- box_radius)).round $ x pos) (((+)(- box_radius)).round $ y pos) (2*box_radius) (2*box_radius))
     SDL.flip screen
 
 main :: IO ()
-main = 
+main =
   SDL.withInit [SDL.InitEverything] $ do
   screen <- SDL.setVideoMode width height 32 [SDL.SWSurface]
   moveblockwithinput screen clockSession_ updateState (0,0) Set.empty
@@ -53,7 +53,7 @@ main =
  where
   moveblockwithinput screen sess wire vel keys = do
     keys' <- parseEvents keys
-    (dt, s') <- stepSession sess 
+    (dt, s') <- stepSession sess
     (state, w') <- stepWire wire dt (Right (keys', vel))
     let ((xpos,ypos),(vx, vy)) = either (const ((0,0), (0,0))) id state
     -- should be able to use switch and edge rather than this hacky thing
@@ -71,8 +71,8 @@ sign False = -1
 sign True = 1
 
 updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, Vec)
-updateState = 
-        let accel = 
+updateState =
+        let accel =
                     let keyDown k = not . null . filter ((==k) . SDL.symKey)
                     in
                     pure (-2, 0) . when (keyDown SDL.SDLK_LEFT)
@@ -82,13 +82,13 @@ updateState =
                         <|> pure (0, 0)
             velocity = accel *** id >>> arr (\((vx,vy),(vx',vy')) -> (vx + vx',vy + vy'))
             -- should maybe have better way of adding the two tuples
-        in 
+        in
         ((integral 0) *** (integral 0)) &&& id <<< velocity
 
 parseEvents :: Set SDL.Keysym -> IO (Set SDL.Keysym)
 parseEvents keysDown = do
     event <- SDL.pollEvent
-    case event of 
+    case event of
         SDL.NoEvent -> return keysDown
         SDL.KeyDown k -> parseEvents (insert k keysDown)
         SDL.KeyUp k -> parseEvents (delete k keysDown)
