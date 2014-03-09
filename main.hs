@@ -41,7 +41,6 @@ render screen (pos, vel) =
     do
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>=
         SDL.fillRect screen Nothing
-    traceIO ("trying to draw" ++ show pos)
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>=
         SDL.fillRect screen
             (Just $ SDL.Rect ((+(- box_radius)).round $ x pos) (((+)(- box_radius)).round $ y pos) (2*box_radius) (2*box_radius))
@@ -58,12 +57,8 @@ main =
     keys'       <- parseEvents keys
     (dt, s')    <- stepSession sess
     (state, w') <- stepWire wire dt (Right (keys', vel))
-    -- traceIO ("state is " ++ show (Left state) ++ show (Right state))
-    traceIO ("state is " ++  show state)
 
     let (x', v') = either (const ((X (fromIntegral width/2),Y (fromIntegral height/2)), vel)) id state
-    -- let (x',v') = return state
-    --    traceIO ("Current pos:" ++ show x' ++ "Current Vel:" ++ show v' )
     render screen (x', v')
     moveblockwithinput screen s' w' v' keys'
     -- where are we keeping track of the position?
@@ -72,7 +67,6 @@ updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, 
 updateState =
     proc (keys, vel) -> do
          accel      <- acceleration -< keys
-         --arr (\s -> traceIO ("vel0 is " ++  show s ++ "\n")) -< vel
          (vx,vy)    <- arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy' - Y gravity)) -< (accel,vel)
          xx <- integral 0 -< vx
          yy <- integral 0 -< vy
@@ -90,9 +84,9 @@ updateState =
                         <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
                         <|> pure ( 0,  0)
                checkBounds (pos,vel,bound) 
-                      | posInt < box_radius         = ((fromIntegral box_radius),  abs vel)
-                      | posInt > bound - box_radius = ((fromIntegral (bound - box_radius)),  (-1) * abs vel)
-                      | otherwise                   = (pos,vel)
+                      | posInt < box_radius && vel < 0           = ((fromIntegral box_radius), -1 * vel)
+                      | posInt > bound - box_radius  && vel > 0  = ((fromIntegral (bound - box_radius)), -1 * vel)
+                      | otherwise                                = (pos,vel)
                       where posInt = (round pos)
                     
 
