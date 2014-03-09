@@ -85,6 +85,8 @@ updateState =
          (vx,vy)    <- arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy' - Y gravity)) -< (accel,vel)
          x <- integral 0 -< vx
          y <- integral 0 -< vy
+         (X x',vx') <- arr checkBounds -< (x,vx,width)
+         (Y y',vy') <- arr checkBounds -< (y,vy,height)
          returnA -< ((x,y),(vx,vy)) 
          where acceleration = 
                        let keyDown k = 
@@ -95,6 +97,12 @@ updateState =
                         <|> pure ( 0, -2) . when (keyDown SDL.SDLK_UP)
                         <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
                         <|> pure ( 0,  0)
+               checkBounds (pos,vel,bound) 
+                      | posInt < box_radius         = (fromIntegral box_radius, -1 * vel)
+                      | posInt > bound - box_radius = (fromIntegral (bound - box_radius), -1 * vel)
+                      | otherwise                   = (pos,vel)
+                      where posInt = (round pos)
+                    
 
 parseEvents :: Set SDL.Keysym -> IO (Set SDL.Keysym)
 parseEvents keysDown = do
