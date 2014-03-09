@@ -52,46 +52,53 @@ main =
 
  where
   moveblockwithinput screen sess wire vel keys = do
-    keys' <- parseEvents keys
-    (dt, s') <- stepSession sess
+    keys'       <- parseEvents keys
+    (dt, s')    <- stepSession sess
     (state, w') <- stepWire wire dt (Right (keys', vel))
-    let ((xpos,ypos),(vx, vy)) = either (const ((0,0), (0,0))) id state
+    let ((xpos, ypos), (vx, vy)) = either (const ((0,0), (0,0))) id state
     -- should be able to use switch and edge rather than this hacky thing
-    let vy' = if ( (round ypos) <0 || (round ypos) > height) then ((sign (2*ypos< fromIntegral height))*(abs vy)) else vy
-    let vx' = if ( (round xpos) <0 || (round xpos) > width) then ((sign (2*xpos< fromIntegral height))*(abs vx)) else vx
-    let v' = (vx',vy')
+    let vy' =
+          if ((round ypos) < 0 || (round ypos) > height)
+          then ((sign (2 * ypos < fromIntegral height)) * (abs vy))
+          else vy
+    let vx' =
+          if ((round xpos) < 0 || (round xpos) > width)
+          then ((sign (2 * xpos < fromIntegral height)) * (abs vx))
+          else vx
+    let v' = (vx', vy')
     -- let v' = (vx,vy)
-    let x' = (xpos,ypos)
-    render screen (x',v')
+    let x' = (xpos, ypos)
+    render screen (x', v')
     moveblockwithinput screen s' w' v' keys'
     -- where are we keeping track of the position?
 
-sign:: Num a => Bool -> a
+sign :: Num a => Bool -> a
 sign False = -1
 sign True = 1
 
 updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, Vec)
 updateState =
-        let accel =
-                    let keyDown k = not . null . filter ((==k) . SDL.symKey)
-                    in
-                    pure (-2, 0) . when (keyDown SDL.SDLK_LEFT)
-                        <|> pure (2, 0) . when (keyDown SDL.SDLK_RIGHT)
-                        <|> pure (0, -2) . when (keyDown SDL.SDLK_UP)
-                        <|> pure (0, 2) . when (keyDown SDL.SDLK_DOWN)
-                        <|> pure (0, 0)
-            velocity = accel *** id >>> arr (\((vx,vy),(vx',vy')) -> (vx + vx',vy + vy'))
-            -- should maybe have better way of adding the two tuples
-        in
-        ((integral 0) *** (integral 0)) &&& id <<< velocity
+   let accel =
+          let keyDown k = not . null . filter ((==k) . SDL.symKey) in
+                pure (-2,  0) . when (keyDown SDL.SDLK_LEFT)
+            <|> pure ( 2,  0) . when (keyDown SDL.SDLK_RIGHT)
+            <|> pure ( 0, -2) . when (keyDown SDL.SDLK_UP)
+            <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
+            <|> pure ( 0,  0)
+       velocity =
+         accel *** id
+         >>> arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy'))
+       -- should maybe have better way of adding the two tuples
+   in
+   ((integral 0) *** (integral 0)) &&& id <<< velocity
 
 parseEvents :: Set SDL.Keysym -> IO (Set SDL.Keysym)
 parseEvents keysDown = do
     event <- SDL.pollEvent
     case event of
-        SDL.NoEvent -> return keysDown
+        SDL.NoEvent   -> return keysDown
         SDL.KeyDown k -> parseEvents (insert k keysDown)
-        SDL.KeyUp k -> parseEvents (delete k keysDown)
-        _ -> parseEvents keysDown
+        SDL.KeyUp k   -> parseEvents (delete k keysDown)
+        _             -> parseEvents keysDown
 
 deriving instance Ord SDL.Keysym
