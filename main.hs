@@ -10,8 +10,10 @@ import Control.Arrow
 import Control.Wire
 import FRP.Netwire
 import Data.Set as Set
-import Debug.Trace
+-- import Debug.Trace
 import qualified Graphics.UI.SDL as SDL
+import qualified Graphics.UI.SDL.TTF as SDLTTF
+import qualified Graphics.UI.SDL.Primitives as SDL
 
 
 newtype Xcoord = X Double deriving (Show, Ord, Eq, Num, Real, Fractional, RealFrac)
@@ -36,31 +38,45 @@ coeff_friction = 0.8 :: Double -- Energy lost in collisions
 gravity = -1::Double -- default acceleration downwards
 -- also sprite information?
 
-render :: SDL.Surface -> (Vec, Vec) -> IO ()
-render screen (pos, vel) =
+render :: SDL.Surface -> (Vec, Vec) -> SDLTTF.Font -> IO ()
+render screen (pos, vel) font =
     do
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>=
         SDL.fillRect screen Nothing
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>=
         SDL.fillRect screen
-            (Just $ SDL.Rect ((+(- box_radius)).round $ x pos) (((+)(- box_radius)).round $ y pos) (2*box_radius) (2*box_radius))
+            (Just $ SDL.Rect ( xcent - box_radius) (ycent - box_radius) (2*box_radius) (2*box_radius))
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 50 >>=
+        SDL.line screen (fromIntegral xcent) (fromIntegral ycent) (fromIntegral $ xcent+dx) (fromIntegral $  ycent+dy)
+    tmp <- renderString font 0 0 ("Current Pos:" ++ show xcent ++ ", " ++ show ycent)
+    SDL.blitSurface tmp Nothing screen (Just $ SDL.Rect 0 0 100 10)
+
     SDL.flip screen
+    where xcent = round $ x pos
+          ycent = round $ y pos
+          dx = round.(/4) $ x vel
+          dy = round.(/4) $ y vel
+
+
+          renderString font xp yp str = (SDLTTF.renderTextSolid font str (SDL.Color 0 0 0))
 
 main :: IO ()
 main =
-  SDL.withInit [SDL.InitEverything] $ do
-  screen <- SDL.setVideoMode width height 32 [SDL.SWSurface]
-  moveblockwithinput screen clockSession_ updateState (0,0) Set.empty
+    SDL.withInit [SDL.InitEverything] $ do
+    SDLTTF.init
+    font <- SDLTTF.openFont "DroidSans.ttf" 10
+    screen <- SDL.setVideoMode width height 32 [SDL.SWSurface]
+    moveblockwithinput screen font clockSession_ updateState (0,0) Set.empty 
 
  where
-  moveblockwithinput screen sess wire vel keys = do
+    moveblockwithinput screen font sess wire vel keys = do
     keys'       <- parseEvents keys
     (dt, s')    <- stepSession sess
     (state, w') <- stepWire wire dt (Right (keys', vel))
 
     let (x', v') = either (const ((X (fromIntegral width/2),Y (fromIntegral height/2)), vel)) id state
-    render screen (x', v')
-    moveblockwithinput screen s' w' v' keys'
+    render screen (x', v') font
+    moveblockwithinput screen font s' w' v' keys'
     -- where are we keeping track of the position?
 
 updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, Vec)
@@ -70,10 +86,9 @@ updateState =
          (vx,vy)    <- arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy' - Y gravity)) -< (accel,vel)
          xx <- integral 0 -< vx
          yy <- integral 0 -< vy
-         arr (\s -> trace ("pos is " ++  show s )) -< (xx,yy)
          (x',vx') <- arr checkBounds -< (xx,vx,width)
          (y',vy') <- arr checkBounds -< (yy,vy,height)
-         returnA -< trace ("oldpos is " ++  show (xx,yy) ) $trace ("newpos is " ++  show (x',y') ) $ ((x',y'),(vx',vy')) 
+         returnA -< ((x',y'),(vx',vy')) 
          where acceleration = 
                        let keyDown k = 
                             not . null . filter ((==k) . SDL.symKey) 

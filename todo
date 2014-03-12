@@ -1,3 +1,4 @@
-show velocity vector
-print info  in corner
 control via polar coords (i.e. rotation + thrust/brake)
+introduce other objects
+implement general collisions
+implement quitting, menu type stuff
