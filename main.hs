@@ -15,6 +15,7 @@ import qualified Graphics.UI.SDL as SDL
 import qualified Graphics.UI.SDL.TTF as SDLTTF
 import qualified Graphics.UI.SDL.Primitives as SDL
 
+deriving instance Ord SDL.Keysym
 
 newtype Xcoord = X Double deriving (Show, Ord, Eq, Num, Real, Fractional, RealFrac)
 newtype Ycoord = Y Double deriving (Show, Ord, Eq, Num, Real, Fractional, RealFrac)
@@ -31,11 +32,16 @@ data PolarVector = PolarVector { theta::Angle, magnitude::Double }
 -}
 
 -- magic constants? aka game parameters
-width = 400::Int
-height = 600::Int
-box_radius = 25 ::Int
-coeff_friction = 0.8 :: Double -- Energy lost in collisions
-gravity = -1::Double -- default acceleration downwards
+width :: Int
+width = 400
+height :: Int
+height = 600
+box_radius :: Int
+box_radius = 25
+coeff_friction :: Double -- Energy lost in collisions
+coeff_friction = 0.8 
+gravity :: Double -- default acceleration downwards
+gravity = -1
 -- also sprite information?
 
 render :: SDL.Surface -> (Vec, Vec) -> SDLTTF.Font -> IO ()
@@ -48,8 +54,7 @@ render screen (pos, vel) font =
             (Just $ SDL.Rect ( xcent - box_radius) (ycent - box_radius) (2*box_radius) (2*box_radius))
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 50 >>=
         SDL.line screen (fromIntegral xcent) (fromIntegral ycent) (fromIntegral $ xcent+dx) (fromIntegral $  ycent+dy)
-    tmp <- renderString font 0 0 ("Current Pos:" ++ show xcent ++ ", " ++ show ycent)
-    SDL.blitSurface tmp Nothing screen (Just $ SDL.Rect 0 0 100 10)
+    renderString font 5 5 ("Current Pos:" ++ show xcent ++ ", " ++ show ycent)
 
     SDL.flip screen
     where xcent = round $ x pos
@@ -58,13 +63,15 @@ render screen (pos, vel) font =
           dy = round.(/4) $ y vel
 
 
-          renderString font xp yp str = (SDLTTF.renderTextSolid font str (SDL.Color 0 0 0))
+          produceString fnt str = (SDLTTF.renderTextSolid fnt str (SDL.Color 0 0 0))
+          renderString fnt xp yp str = produceString fnt str >>= 
+              (\text -> SDL.blitSurface text Nothing screen (Just $SDL.Rect xp yp (xp + 100) (yp+10)))
 
 main :: IO ()
 main =
     SDL.withInit [SDL.InitEverything] $ do
     SDLTTF.init
-    font <- SDLTTF.openFont "DroidSans.ttf" 10
+    font <- SDLTTF.openFont "DroidSans.ttf" 18
     screen <- SDL.setVideoMode width height 32 [SDL.SWSurface]
     moveblockwithinput screen font clockSession_ updateState (0,0) Set.empty 
 
@@ -98,7 +105,7 @@ updateState =
                         <|> pure ( 0, -2) . when (keyDown SDL.SDLK_UP)
                         <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
                         <|> pure ( 0,  0)
-               checkBounds (pos,vel,bound) 
+               checkBounds (pos,vel,bound) -- bounce mode
                       | posInt < box_radius && vel < 0           = ((fromIntegral box_radius), -1 * vel)
                       | posInt > bound - box_radius  && vel > 0  = ((fromIntegral (bound - box_radius)), -1 * vel)
                       | otherwise                                = (pos,vel)
@@ -114,4 +121,3 @@ parseEvents keysDown = do
         SDL.KeyUp k   -> parseEvents (delete k keysDown)
         _             -> parseEvents keysDown
 
-deriving instance Ord SDL.Keysym
