@@ -26,6 +26,30 @@ x = fst
 y :: Vec -> Ycoord
 y = snd
 
+data Polar = Polar { theta :: Double , radius :: Double }
+
+polar_to_vec :: Polar -> Vec
+polar_to_vec (Polar {theta = t, radius = r}) =
+    let
+        x' = r * cos t
+        y' = r * sin t
+    in
+    (X x', Y y')
+
+vec_to_polar :: Vec -> Polar
+vec_to_polar (X 0, Y y') =
+    let
+        r = y'
+        t = pi/2
+    in
+    Polar {theta = t, radius = r}
+vec_to_polar (X x', Y y') =
+    let
+        r = sqrt (x' ^ 2 + y' ^ 2)
+        t = atan (y'/x')
+    in
+    Polar {theta = t, radius = r}
+
 {-
 newtype Angle = A Double -- measured of course in radians
 data PolarVector = PolarVector { theta::Angle, magnitude::Double }
@@ -48,9 +72,9 @@ render :: SDL.Surface -> (Vec, Vec) -> Int -> IO ()
 {-render :: SDL.Surface -> (Vec, Vec) -> SDLTTF.Font -> IO ()-}
 render screen (pos, vel) font =
     do
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen (fromIntegral 255) (fromIntegral 255) (fromIntegral 255) >>=
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>=
         SDL.fillRect screen Nothing
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen (fromIntegral 0) (fromIntegral 50) (fromIntegral 200) >>=
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>=
         SDL.fillRect screen
             (Just $ SDL.Rect ( xcent - box_radius) (ycent - box_radius) (2*box_radius) (2*box_radius))
     {-(SDL.mapRGB . SDL.surfaceGetPixelFormat) screen (fromIntegral 0) (fromIntegral 50) (fromIntegral 50) >>=-}
@@ -75,7 +99,7 @@ main =
     {-font <- SDLTTF.openFont "DroidSans.ttf" 18-}
     screen <- SDL.setVideoMode width height 32 [SDL.SWSurface]
     {-moveblockwithinput screen font clockSession_ updateState (0,0) Set.empty-}
-    moveblockwithinput screen 0 clockSession_ updateState (0,0) Set.empty
+    moveblockwithinput screen 0 clockSession_ polarUpdateState (0,0) Set.empty
 
  where
     moveblockwithinput screen font sess wire vel keys = do
@@ -112,6 +136,39 @@ updateState =
                       | posInt > bound - box_radius  && vel > 0  = ((fromIntegral (bound - box_radius)), -1 * vel)
                       | otherwise                                = (pos,vel)
                       where posInt = (round pos)
+
+polarUpdateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, Vec)
+polarUpdateState =
+    proc (keys, vel) -> do
+         accel      <- acceleration -< keys
+         (vx,vy)    <- arr updateVelocity -< (accel,vel)
+         xx <- integral 0 -< vx
+         yy <- integral 0 -< vy
+         {-(x',vx') <- arr checkBounds -< (xx,vx,width)-}
+         {-(y',vy') <- arr checkBounds -< (yy,vy,height)-}
+         {-returnA -< ((x',y'),(vx',vy'))-}
+         returnA -< ((xx,yy),(vx,vy))
+         where acceleration =
+                       let keyDown k =
+                            not . null . filter ((==k) . SDL.symKey)
+                       in
+                            pure (Polar {theta = 0.5, radius = 0}) . when (keyDown SDL.SDLK_LEFT)
+                        <|> pure (Polar {theta = -0.5, radius = 0}) . when (keyDown SDL.SDLK_RIGHT)
+                        <|> pure (Polar {theta =  0, radius = 2.5}) . when (keyDown SDL.SDLK_UP)
+                        <|> pure (Polar {theta =  0, radius = -2.5}) . when (keyDown SDL.SDLK_DOWN)
+                        <|> pure (Polar {theta =  0, radius = 0})
+               checkBounds (pos,vel,bound) -- bounce mode
+                      | posInt < box_radius && vel < 0           = ((fromIntegral box_radius), -1 * vel)
+                      | posInt > bound - box_radius  && vel > 0  = ((fromIntegral (bound - box_radius)), -1 * vel)
+                      | otherwise                                = (pos,vel)
+                      where posInt = (round pos)
+               updateVelocity ((Polar {theta = t, radius = r}), vec) =
+                      let
+                        Polar {theta = curt, radius = curr} = vec_to_polar vec
+                        newt = t + curt
+                        newr = r + curr
+                      in
+                      polar_to_vec (Polar {theta = newt ,radius = newr})
 
 
 parseEvents :: Set SDL.Keysym -> IO (Set SDL.Keysym)
