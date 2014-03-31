@@ -40,13 +40,13 @@ vec_to_polar :: Vec -> Polar
 vec_to_polar (X 0, Y y') =
     let
         r = y'
-        t = pi/2
+        t = if y' > 0 then pi/2 else -pi/2
     in
     Polar {theta = t, radius = r}
 vec_to_polar (X x', Y y') =
     let
-        r = sqrt (x' ^ 2 + y' ^ 2)
-        t = atan (y'/x')
+        r = sqrt (x' * x' + y' * y')
+        t = atan (y'/x') + (if x' > 0 then 0 else pi)
     in
     Polar {theta = t, radius = r}
 
@@ -80,10 +80,9 @@ render screen (pos, vel) font =
     {-(SDL.mapRGB . SDL.surfaceGetPixelFormat) screen (fromIntegral 0) (fromIntegral 50) (fromIntegral 50) >>=-}
         {-SDL.line screen (fromIntegral xcent) (fromIntegral ycent) (fromIntegral $ xcent+dx) (fromIntegral $  ycent+dy)-}
     {-renderString font 5 5 ("Current Pos:" ++ show xcent ++ ", " ++ show ycent)-}
-
     SDL.flip screen
-    where xcent = round $ x pos
-          ycent = round $ y pos
+    where xcent = (width `div` 2) + (round $ x pos)
+          ycent = (height `div` 2) + (round $ y pos)
           dx = round.(/4) $ x vel
           dy = round.(/4) $ y vel
 
@@ -154,8 +153,8 @@ polarUpdateState =
                        in
                             pure (Polar {theta = 0.5, radius = 0}) . when (keyDown SDL.SDLK_LEFT)
                         <|> pure (Polar {theta = -0.5, radius = 0}) . when (keyDown SDL.SDLK_RIGHT)
-                        <|> pure (Polar {theta =  0, radius = 2.5}) . when (keyDown SDL.SDLK_UP)
-                        <|> pure (Polar {theta =  0, radius = -2.5}) . when (keyDown SDL.SDLK_DOWN)
+                        <|> pure (Polar {theta =  0, radius = 0.5}) . when (keyDown SDL.SDLK_UP)
+                        <|> pure (Polar {theta =  0, radius = -0.5}) . when (keyDown SDL.SDLK_DOWN)
                         <|> pure (Polar {theta =  0, radius = 0})
                checkBounds (pos,vel,bound) -- bounce mode
                       | posInt < box_radius && vel < 0           = ((fromIntegral box_radius), -1 * vel)
