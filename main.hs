@@ -12,8 +12,8 @@ import FRP.Netwire
 import Data.Set as Set
 -- import Debug.Trace
 import qualified Graphics.UI.SDL as SDL
-{-import qualified Graphics.UI.SDL.TTF as SDLTTF-}
-{-import qualified Graphics.UI.SDL.Primitives as SDL-}
+import qualified Graphics.UI.SDL.TTF as SDLTTF
+import qualified Graphics.UI.SDL.Primitives as SDL
 
 deriving instance Ord SDL.Keysym
 
@@ -68,18 +68,18 @@ gravity :: Double -- default acceleration downwards
 gravity = -1
 -- also sprite information?
 
-render :: SDL.Surface -> (Vec, Vec) -> Int -> IO ()
-{-render :: SDL.Surface -> (Vec, Vec) -> SDLTTF.Font -> IO ()-}
+{-render :: SDL.Surface -> (Vec, Vec) -> Int -> IO ()
+render :: SDL.Surface -> (Vec, Vec) -> SDLTTF.Font -> IO ()-}
 render screen (pos, vel) font =
     do
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>=
         SDL.fillRect screen Nothing
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen (fromIntegral 80) (fromIntegral 80) (fromIntegral 80) >>=
+        SDL.line screen (fromIntegral xcent) (fromIntegral ycent) (fromIntegral $ xcent+ 10*dx) (fromIntegral $  ycent+ 10*dy)
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>=
         SDL.fillRect screen
             (Just $ SDL.Rect ( xcent - box_radius) (ycent - box_radius) (2*box_radius) (2*box_radius))
-    {-(SDL.mapRGB . SDL.surfaceGetPixelFormat) screen (fromIntegral 0) (fromIntegral 50) (fromIntegral 50) >>=-}
-        {-SDL.line screen (fromIntegral xcent) (fromIntegral ycent) (fromIntegral $ xcent+dx) (fromIntegral $  ycent+dy)-}
-    {-renderString font 5 5 ("Current Pos:" ++ show xcent ++ ", " ++ show ycent)-}
+    renderString font 5 5 ("Current Pos:" ++ show xcent ++ ", " ++ show ycent)
     SDL.flip screen
     where xcent = (width `div` 2) + (round $ x pos)
           ycent = (height `div` 2) + (round $ y pos)
@@ -87,18 +87,18 @@ render screen (pos, vel) font =
           dy = round.(/4) $ y vel
 
 
-          {-produceString fnt str = (SDLTTF.renderTextSolid fnt str (SDL.Color 0 0 0))-}
-          {-renderString fnt xp yp str = produceString fnt str >>=-}
-              {-(\text -> SDL.blitSurface text Nothing screen (Just $SDL.Rect xp yp (xp + 100) (yp+10)))-}
+          produceString fnt str = (SDLTTF.renderTextSolid fnt str (SDL.Color 0 0 0))
+          renderString fnt xp yp str = produceString fnt str >>=
+              (\text -> SDL.blitSurface text Nothing screen (Just $SDL.Rect xp yp (xp + 100) (yp+10)))
 
 main :: IO ()
 main =
     SDL.withInit [SDL.InitEverything] $ do
-    {-SDLTTF.init-}
-    {-font <- SDLTTF.openFont "DroidSans.ttf" 18-}
+    SDLTTF.init
+    font <- SDLTTF.openFont "DroidSans.ttf" 18
     screen <- SDL.setVideoMode width height 32 [SDL.SWSurface]
     {-moveblockwithinput screen font clockSession_ updateState (0,0) Set.empty-}
-    moveblockwithinput screen 0 clockSession_ polarUpdateState (0,0) Set.empty
+    moveblockwithinput screen font clockSession_ polarUpdateState (0,0) Set.empty
 
  where
     moveblockwithinput screen font sess wire vel keys = do
@@ -151,8 +151,8 @@ polarUpdateState =
                        let keyDown k =
                             not . null . filter ((==k) . SDL.symKey)
                        in
-                            pure (Polar {theta = 0.5, radius = 0}) . when (keyDown SDL.SDLK_LEFT)
-                        <|> pure (Polar {theta = -0.5, radius = 0}) . when (keyDown SDL.SDLK_RIGHT)
+                            pure (Polar {theta = pi/600, radius = 0}) . when (keyDown SDL.SDLK_LEFT)
+                        <|> pure (Polar {theta = -pi/600, radius = 0}) . when (keyDown SDL.SDLK_RIGHT)
                         <|> pure (Polar {theta =  0, radius = 0.5}) . when (keyDown SDL.SDLK_UP)
                         <|> pure (Polar {theta =  0, radius = -0.5}) . when (keyDown SDL.SDLK_DOWN)
                         <|> pure (Polar {theta =  0, radius = 0})
