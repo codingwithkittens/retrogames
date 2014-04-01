@@ -17,8 +17,8 @@ import qualified Graphics.UI.SDL.Primitives as SDL
 
 deriving instance Ord SDL.Keysym
 
-newtype Xcoord = X Double deriving (Show, Ord, Eq, Num, Real, Fractional, RealFrac)
-newtype Ycoord = Y Double deriving (Show, Ord, Eq, Num, Real, Fractional, RealFrac)
+type Xcoord = Double
+type Ycoord = Double
 -- not sure if Vec should be a newtype
 type Vec = (Xcoord, Ycoord)
 x :: Vec -> Xcoord
@@ -34,16 +34,16 @@ polarToVec (Polar {theta = t, radius = r}) =
         x' = r * cos t
         y' = r * sin t
     in
-    (X x', Y y')
+    (x', y')
 
 vecToPolar :: Vec -> Polar
-vecToPolar (X 0, Y y') =
+vecToPolar (0, y') =
     let
         r = y'
         t = if y' > 0 then pi/2 else -pi/2
     in
     Polar {theta = t, radius = r}
-vecToPolar (X x', Y y') =
+vecToPolar (x', y') =
     let
         r = sqrt (x' * x' + y' * y')
         t = atan (y'/x') + (if x' > 0 then 0 else pi)
@@ -62,8 +62,8 @@ height :: Int
 height = 600
 boxRadius :: Int
 boxRadius = 25
-coeffFriction :: Double -- Energy lost in collisions
-coeffFriction = 0.8
+energyLoss :: Double -- Energy lost in collisions
+energyLoss = 0.95
 gravity :: Double -- default acceleration downwards
 gravity = -1
 -- also sprite information?
@@ -105,7 +105,7 @@ main =
     (dt, s')    <- stepSession sess
     (state, w') <- stepWire wire dt (Right (keys', vel))
 
-    let (x', v') = either (const ((X (fromIntegral width/2),Y (fromIntegral height/2)), vel)) id state
+    let (x', v') = either (const ((fromIntegral width/2,fromIntegral height/2), vel)) id state
     render screen (x', v') font
     moveblockwithinput screen font s' w' v' keys'
     -- where are we keeping track of the position?
@@ -114,11 +114,11 @@ updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, 
 updateState =
     proc (keys, vel) -> do
          accel      <- acceleration -< keys
-         (vx,vy)    <- arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy' - Y gravity)) -< (accel,vel)
+         (vx,vy)    <- arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy' - gravity)) -< (accel,vel)
          xx <- integral 0 -< vx
          yy <- integral 0 -< vy
-         (x',vx') <- arr checkBounds -< (xx,vx,width)
-         (y',vy') <- arr checkBounds -< (yy,vy,height)
+         (x',vx') <- arr checkBounds -< (xx,vx,width `div` 2)
+         (y',vy') <- arr checkBounds -< (yy,vy,height `div` 2)
          returnA -< ((x',y'),(vx',vy'))
          where acceleration =
                        let keyDown k =
@@ -130,8 +130,8 @@ updateState =
                         <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
                         <|> pure ( 0,  0)
                checkBounds (pos,vel,bound) -- bounce mode
-                      | posInt < boxRadius && vel < 0           = ((fromIntegral boxRadius), -1 * vel)
-                      | posInt > bound - boxRadius  && vel > 0  = ((fromIntegral (bound - boxRadius)), -1 * vel)
+                      | posInt < -bound + boxRadius && vel < 0  = (fromIntegral (-bound + boxRadius), fromIntegral $ round $ -energyLoss * vel)
+                      | posInt > bound - boxRadius  && vel > 0  = (fromIntegral (bound - boxRadius), fromIntegral $ round $ -energyLoss * vel)
                       | otherwise                                = (pos,vel)
                       where posInt = (round pos)
 
@@ -140,10 +140,11 @@ polarUpdateState =
     proc (keys, vel) -> do
          accel      <- acceleration -< keys
          (vx,vy)    <- arr updateVelocity -< (accel,vel)
+         let vyg = vy - gravity
          xx <- integral 0 -< vx
-         yy <- integral 0 -< vy
+         yy <- integral 0 -< vyg
          (x',vx') <- arr checkBounds -< (xx,vx,width `div` 2)
-         (y',vy') <- arr checkBounds -< (yy,vy,height `div` 2)
+         (y',vy') <- arr checkBounds -< (yy,vyg,height `div` 2)
          returnA -< ((x',y'),(vx',vy'))
          where acceleration =
                        let keyDown k =
@@ -155,8 +156,8 @@ polarUpdateState =
                         <|> pure (Polar {theta =  0, radius = -0.5})   . when (keyDown SDL.SDLK_DOWN)
                         <|> pure (Polar {theta =  0, radius =  0})
                checkBounds (pos,vel,bound) -- bounce mode
-                      | posInt < -bound + boxRadius && vel < 0  = (fromIntegral (-bound + boxRadius), -1 * vel)
-                      | posInt > bound - boxRadius  && vel > 0  = (fromIntegral ( bound - boxRadius), -1 * vel)
+                      | posInt < -bound + boxRadius && vel < 0  = (fromIntegral (-bound + boxRadius), -energyLoss * vel)
+                      | posInt > bound - boxRadius  && vel > 0  = (fromIntegral ( bound - boxRadius), -energyLoss * vel)
                       | otherwise                                = (pos,vel)
                       where posInt = (round pos)
                updateVelocity ((Polar {theta = t, radius = r}), vec) =
