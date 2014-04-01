@@ -1,6 +1,4 @@
 {-# LANGUAGE Arrows #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- this will be something shortly
 -- copied from getting started with netwire and sdl
@@ -15,8 +13,6 @@ import qualified Graphics.UI.SDL as SDL
 import qualified Graphics.UI.SDL.TTF as SDLTTF
 import qualified Graphics.UI.SDL.Primitives as SDL
 
-deriving instance Ord SDL.Keysym
-
 type Xcoord = Double
 type Ycoord = Double
 -- not sure if Vec should be a newtype
@@ -29,7 +25,7 @@ y = snd
 data Polar = Polar { theta :: Double , radius :: Double }
 
 polarToVec :: Polar -> Vec
-polarToVec (Polar {theta = t, radius = r}) =
+polarToVec (Polar {theta = t, radius = r}) = -- (r * cos t, r * sin t)
     let
         x' = r * cos t
         y' = r * sin t
@@ -50,10 +46,6 @@ vecToPolar (x', y') =
     in
     Polar {theta = t, radius = r}
 
-{-
-newtype Angle = A Double -- measured of course in radians
-data PolarVector = PolarVector { theta::Angle, magnitude::Double }
--}
 
 -- magic constants? aka game parameters
 width :: Int
@@ -80,13 +72,13 @@ render screen (pos, vel) font =
             (Just $ SDL.Rect ( xcent - boxRadius) (ycent - boxRadius) (2*boxRadius) (2*boxRadius))
     renderString font 5 5 ("Current Pos:" ++ show xcent ++ ", " ++ show ycent)
     SDL.flip screen
-    where xcent = (width `div` 2) + (round $ x pos)
-          ycent = (height `div` 2) + (round $ y pos)
+    where xcent = (width `div` 2) + round (x pos)
+          ycent = (height `div` 2) + round (y pos)
+
           dx = round.(/4) $ x vel
           dy = round.(/4) $ y vel
 
-
-          produceString fnt str = (SDLTTF.renderTextSolid fnt str (SDL.Color 0 0 0))
+          produceString fnt str = SDLTTF.renderTextSolid fnt str (SDL.Color 0 0 0)
           renderString fnt xp yp str = produceString fnt str >>=
               (\text -> SDL.blitSurface text Nothing screen (Just $SDL.Rect xp yp (xp + 100) (yp+10)))
 
@@ -96,7 +88,6 @@ main =
     SDLTTF.init
     font <- SDLTTF.openFont "DroidSans.ttf" 18
     screen <- SDL.setVideoMode width height 32 [SDL.SWSurface]
-    {-moveblockwithinput screen font clockSession_ updateState (0,0) Set.empty-}
     moveblockwithinput screen font clockSession_ polarUpdateState (0,0) Set.empty
 
  where
@@ -110,8 +101,8 @@ main =
     moveblockwithinput screen font s' w' v' keys'
     -- where are we keeping track of the position?
 
-updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, Vec)
-updateState =
+_updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.SDLKey,Vec) (Vec, Vec)
+_updateState =
     proc (keys, vel) -> do
          accel      <- acceleration -< keys
          (vx,vy)    <- arr (\((vx,vy), (vx',vy')) -> (vx + vx', vy + vy' - gravity)) -< (accel,vel)
@@ -121,21 +112,18 @@ updateState =
          (y',vy') <- arr checkBounds -< (yy,vy,height `div` 2)
          returnA -< ((x',y'),(vx',vy'))
          where acceleration =
-                       let keyDown k =
-                            not . null . filter ((==k) . SDL.symKey)
-                       in
-                            pure (-2,  0) . when (keyDown SDL.SDLK_LEFT)
-                        <|> pure ( 2,  0) . when (keyDown SDL.SDLK_RIGHT)
-                        <|> pure ( 0, -2) . when (keyDown SDL.SDLK_UP)
-                        <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
+                            pure (-2,  0) . when (member SDL.SDLK_LEFT)
+                        <|> pure ( 2,  0) . when (member SDL.SDLK_RIGHT)
+                        <|> pure ( 0, -2) . when (member SDL.SDLK_UP)
+                        <|> pure ( 0,  2) . when (member SDL.SDLK_DOWN)
                         <|> pure ( 0,  0)
                checkBounds (pos,vel,bound) -- bounce mode
-                      | posInt < -bound + boxRadius && vel < 0  = (fromIntegral (-bound + boxRadius), fromIntegral $ round $ -energyLoss * vel)
-                      | posInt > bound - boxRadius  && vel > 0  = (fromIntegral (bound - boxRadius), fromIntegral $ round $ -energyLoss * vel)
+                      | posInt < -bound + boxRadius && vel < 0  = (fromIntegral (-bound + boxRadius),  -energyLoss * vel)
+                      | posInt > bound - boxRadius  && vel > 0  = (fromIntegral (bound - boxRadius),  -energyLoss * vel)
                       | otherwise                                = (pos,vel)
-                      where posInt = (round pos)
+                      where posInt = round pos
 
-polarUpdateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.Keysym,Vec) (Vec, Vec)
+polarUpdateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.SDLKey,Vec) (Vec, Vec)
 polarUpdateState =
     proc (keys, vel) -> do
          accel      <- acceleration -< keys
@@ -147,34 +135,31 @@ polarUpdateState =
          (y',vy') <- arr checkBounds -< (yy,vyg,height `div` 2)
          returnA -< ((x',y'),(vx',vy'))
          where acceleration =
-                       let keyDown k =
-                            not . null . filter ((==k) . SDL.symKey)
-                       in
-                            pure (Polar {theta =  pi/600, radius = 0}) . when (keyDown SDL.SDLK_LEFT)
-                        <|> pure (Polar {theta = -pi/600, radius = 0}) . when (keyDown SDL.SDLK_RIGHT)
-                        <|> pure (Polar {theta =  0, radius =  0.5})   . when (keyDown SDL.SDLK_UP)
-                        <|> pure (Polar {theta =  0, radius = -0.5})   . when (keyDown SDL.SDLK_DOWN)
-                        <|> pure (Polar {theta =  0, radius =  0})
+                            pure Polar {theta = -pi/600, radius = 0} . when (member SDL.SDLK_LEFT)
+                        <|> pure Polar {theta =  pi/600, radius = 0} . when (member SDL.SDLK_RIGHT)
+                        <|> pure Polar {theta =  0, radius =  0.5}   . when (member SDL.SDLK_UP)
+                        <|> pure Polar {theta =  0, radius = -0.5}   . when (member SDL.SDLK_DOWN)
+                        <|> pure Polar {theta =  0, radius =  0}
                checkBounds (pos,vel,bound) -- bounce mode
                       | posInt < -bound + boxRadius && vel < 0  = (fromIntegral (-bound + boxRadius), -energyLoss * vel)
                       | posInt > bound - boxRadius  && vel > 0  = (fromIntegral ( bound - boxRadius), -energyLoss * vel)
                       | otherwise                                = (pos,vel)
-                      where posInt = (round pos)
-               updateVelocity ((Polar {theta = t, radius = r}), vec) =
+                      where posInt = round pos
+               updateVelocity (Polar {theta = t, radius = r}, vec) =
                       let
                         Polar {theta = curt, radius = curr} = vecToPolar vec
                         newt = t + curt
                         newr = r + curr
                       in
-                      polarToVec (Polar {theta = newt ,radius = newr})
+                      polarToVec Polar {theta = newt ,radius = newr}
 
 
-parseEvents :: Set SDL.Keysym -> IO (Set SDL.Keysym)
+parseEvents :: Set SDL.SDLKey -> IO (Set SDL.SDLKey)
 parseEvents keysDown = do
     event <- SDL.pollEvent
     case event of
         SDL.NoEvent   -> return keysDown
-        SDL.KeyDown k -> parseEvents (insert k keysDown)
-        SDL.KeyUp k   -> parseEvents (delete k keysDown)
+        SDL.KeyDown (SDL.Keysym k _ _) -> parseEvents (insert k keysDown)
+        SDL.KeyUp (SDL.Keysym k _ _)   -> parseEvents (delete k keysDown)
         _             -> parseEvents keysDown
 
