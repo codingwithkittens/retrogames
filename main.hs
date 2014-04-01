@@ -28,22 +28,22 @@ y = snd
 
 data Polar = Polar { theta :: Double , radius :: Double }
 
-polar_to_vec :: Polar -> Vec
-polar_to_vec (Polar {theta = t, radius = r}) =
+polarToVec :: Polar -> Vec
+polarToVec (Polar {theta = t, radius = r}) =
     let
         x' = r * cos t
         y' = r * sin t
     in
     (X x', Y y')
 
-vec_to_polar :: Vec -> Polar
-vec_to_polar (X 0, Y y') =
+vecToPolar :: Vec -> Polar
+vecToPolar (X 0, Y y') =
     let
         r = y'
         t = if y' > 0 then pi/2 else -pi/2
     in
     Polar {theta = t, radius = r}
-vec_to_polar (X x', Y y') =
+vecToPolar (X x', Y y') =
     let
         r = sqrt (x' * x' + y' * y')
         t = atan (y'/x') + (if x' > 0 then 0 else pi)
@@ -60,25 +60,24 @@ width :: Int
 width = 400
 height :: Int
 height = 600
-box_radius :: Int
-box_radius = 25
-coeff_friction :: Double -- Energy lost in collisions
-coeff_friction = 0.8
+boxRadius :: Int
+boxRadius = 25
+coeffFriction :: Double -- Energy lost in collisions
+coeffFriction = 0.8
 gravity :: Double -- default acceleration downwards
 gravity = -1
 -- also sprite information?
 
-{-render :: SDL.Surface -> (Vec, Vec) -> Int -> IO ()
-render :: SDL.Surface -> (Vec, Vec) -> SDLTTF.Font -> IO ()-}
+render :: SDL.Surface -> (Vec, Vec) -> SDLTTF.Font -> IO ()
 render screen (pos, vel) font =
     do
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>=
         SDL.fillRect screen Nothing
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen (fromIntegral 80) (fromIntegral 80) (fromIntegral 80) >>=
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 80 80 80 >>=
         SDL.line screen (fromIntegral xcent) (fromIntegral ycent) (fromIntegral $ xcent+ 10*dx) (fromIntegral $  ycent+ 10*dy)
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>=
         SDL.fillRect screen
-            (Just $ SDL.Rect ( xcent - box_radius) (ycent - box_radius) (2*box_radius) (2*box_radius))
+            (Just $ SDL.Rect ( xcent - boxRadius) (ycent - boxRadius) (2*boxRadius) (2*boxRadius))
     renderString font 5 5 ("Current Pos:" ++ show xcent ++ ", " ++ show ycent)
     SDL.flip screen
     where xcent = (width `div` 2) + (round $ x pos)
@@ -131,8 +130,8 @@ updateState =
                         <|> pure ( 0,  2) . when (keyDown SDL.SDLK_DOWN)
                         <|> pure ( 0,  0)
                checkBounds (pos,vel,bound) -- bounce mode
-                      | posInt < box_radius && vel < 0           = ((fromIntegral box_radius), -1 * vel)
-                      | posInt > bound - box_radius  && vel > 0  = ((fromIntegral (bound - box_radius)), -1 * vel)
+                      | posInt < boxRadius && vel < 0           = ((fromIntegral boxRadius), -1 * vel)
+                      | posInt > bound - boxRadius  && vel > 0  = ((fromIntegral (bound - boxRadius)), -1 * vel)
                       | otherwise                                = (pos,vel)
                       where posInt = (round pos)
 
@@ -143,31 +142,30 @@ polarUpdateState =
          (vx,vy)    <- arr updateVelocity -< (accel,vel)
          xx <- integral 0 -< vx
          yy <- integral 0 -< vy
-         {-(x',vx') <- arr checkBounds -< (xx,vx,width)-}
-         {-(y',vy') <- arr checkBounds -< (yy,vy,height)-}
-         {-returnA -< ((x',y'),(vx',vy'))-}
-         returnA -< ((xx,yy),(vx,vy))
+         (x',vx') <- arr checkBounds -< (xx,vx,width `div` 2)
+         (y',vy') <- arr checkBounds -< (yy,vy,height `div` 2)
+         returnA -< ((x',y'),(vx',vy'))
          where acceleration =
                        let keyDown k =
                             not . null . filter ((==k) . SDL.symKey)
                        in
-                            pure (Polar {theta = pi/600, radius = 0}) . when (keyDown SDL.SDLK_LEFT)
+                            pure (Polar {theta =  pi/600, radius = 0}) . when (keyDown SDL.SDLK_LEFT)
                         <|> pure (Polar {theta = -pi/600, radius = 0}) . when (keyDown SDL.SDLK_RIGHT)
-                        <|> pure (Polar {theta =  0, radius = 0.5}) . when (keyDown SDL.SDLK_UP)
-                        <|> pure (Polar {theta =  0, radius = -0.5}) . when (keyDown SDL.SDLK_DOWN)
-                        <|> pure (Polar {theta =  0, radius = 0})
+                        <|> pure (Polar {theta =  0, radius =  0.5})   . when (keyDown SDL.SDLK_UP)
+                        <|> pure (Polar {theta =  0, radius = -0.5})   . when (keyDown SDL.SDLK_DOWN)
+                        <|> pure (Polar {theta =  0, radius =  0})
                checkBounds (pos,vel,bound) -- bounce mode
-                      | posInt < box_radius && vel < 0           = ((fromIntegral box_radius), -1 * vel)
-                      | posInt > bound - box_radius  && vel > 0  = ((fromIntegral (bound - box_radius)), -1 * vel)
+                      | posInt < -bound + boxRadius && vel < 0  = (fromIntegral (-bound + boxRadius), -1 * vel)
+                      | posInt > bound - boxRadius  && vel > 0  = (fromIntegral ( bound - boxRadius), -1 * vel)
                       | otherwise                                = (pos,vel)
                       where posInt = (round pos)
                updateVelocity ((Polar {theta = t, radius = r}), vec) =
                       let
-                        Polar {theta = curt, radius = curr} = vec_to_polar vec
+                        Polar {theta = curt, radius = curr} = vecToPolar vec
                         newt = t + curt
                         newr = r + curr
                       in
-                      polar_to_vec (Polar {theta = newt ,radius = newr})
+                      polarToVec (Polar {theta = newt ,radius = newr})
 
 
 parseEvents :: Set SDL.Keysym -> IO (Set SDL.Keysym)
