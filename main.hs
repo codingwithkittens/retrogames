@@ -60,23 +60,34 @@ gravity :: Double -- default acceleration downwards
 gravity = -1
 -- also sprite information?
 
-render :: SDL.Surface -> (Vec, Vec) -> SDLTTF.Font -> IO ()
-render screen (pos, vel) font =
+-- separating bearing from velocity vec
+render :: SDL.Surface -> (Vec, Vec, Polar) -> SDLTTF.Font -> IO ()
+render screen (pos, vel, bearing) font =
     do
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>=
-        SDL.fillRect screen Nothing
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 80 80 80 >>=
-        SDL.line screen (fromIntegral xcent) (fromIntegral ycent) (fromIntegral $ xcent+ 10*dx) (fromIntegral $  ycent+ 10*dy)
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>=
-        SDL.fillRect screen
+    SDL.fillRect screen Nothing (SDL.Pixel 0xFFFFFF)
+    -- Drawing velocity
+    SDL.line screen (fromIntegral xcent) (fromIntegral ycent) 
+        (fromIntegral $ xcent+ 10*dx) (fromIntegral $  ycent+ 10*dy) 
+        (SDL.Pixel 0x00FFF0)
+    -- Drawing box
+    SDL.fillRect screen
             (Just $ SDL.Rect ( xcent - boxRadius) (ycent - boxRadius) (2*boxRadius) (2*boxRadius))
+            (SDL.Pixel 0x0000FF)
+    -- Drawing bearing
+    SDL.line screen (fromIntegral xcent) (fromIntegral ycent) (fromIntegral $ xcent+ 10*bear_dx) (fromIntegral $  ycent+ 10*bear_dy)
+        (SDL.Pixel 0x2020FF)
     renderString font 5 5 ("Current Pos:" ++ show xcent ++ ", " ++ show ycent)
+    renderString font 5 50 ("Current Bearing:" ++ show (theta bearing) ++ ", " ++ show (radius bearing))
     SDL.flip screen
     where xcent = (width `div` 2) + round (x pos)
           ycent = (height `div` 2) + round (y pos)
 
           dx = round.(/4) $ x vel
           dy = round.(/4) $ y vel
+
+          bear'   = polarToVec bearing
+          bear_dx = round.(/2) $ x bear'
+          bear_dy = round.(/2) $ y bear'
 
           produceString fnt str = SDLTTF.renderTextSolid fnt str (SDL.Color 0 0 0)
           renderString fnt xp yp str = produceString fnt str >>=
@@ -88,17 +99,17 @@ main =
     SDLTTF.init
     font <- SDLTTF.openFont "DroidSans.ttf" 18
     screen <- SDL.setVideoMode width height 32 [SDL.SWSurface]
-    moveblockwithinput screen font clockSession_ polarUpdateState (0,0) Set.empty
+    moveblockwithinput screen font clockSession_ polarUpdateState (0,0) (Polar 0 0) Set.empty
 
  where
-    moveblockwithinput screen font sess wire vel keys = do
+    moveblockwithinput screen font sess wire vel bear keys = do
     keys'       <- parseEvents keys
     (dt, s')    <- stepSession sess
-    (state, w') <- stepWire wire dt (Right (keys', vel))
+    (state, w') <- stepWire wire dt (Right (keys', vel, bear))
 
-    let (x', v') = either (const ((fromIntegral width/2,fromIntegral height/2), vel)) id state
-    render screen (x', v') font
-    moveblockwithinput screen font s' w' v' keys'
+    let (x', v', b') = either (const ((fromIntegral width/2,fromIntegral height/2), vel, bear)) id state
+    render screen (x', v', b') font
+    moveblockwithinput screen font s' w' v' b' keys'
     -- where are we keeping track of the position?
 
 _updateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.SDLKey,Vec) (Vec, Vec)
@@ -123,8 +134,42 @@ _updateState =
                       | otherwise                                = (pos,vel)
                       where posInt = round pos
 
-polarUpdateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.SDLKey,Vec) (Vec, Vec)
+polarUpdateState :: (HasTime t s, Monad m) => Wire s () m (Set SDL.SDLKey,Vec,Polar) (Vec, Vec, Polar)
 polarUpdateState =
+    proc (keys, vel, bear) -> do
+         accel      <- acceleration -< keys
+         (vx,vy)    <- arr updateVelocity -< (accel,vel)
+         bearing    <- arr updateBearing  -< (accel,bear)
+         let vyg = vy - gravity
+         xx <- integral 0 -< vx
+         yy <- integral 0 -< vyg
+         (x',vx') <- arr checkBounds -< (xx,vx,width `div` 2)
+         (y',vy') <- arr checkBounds -< (yy,vyg,height `div` 2)
+         returnA -< ((x',y'),(vx',vy'),bearing)
+         where acceleration =
+                            pure Polar {theta = -pi/600, radius = 0} . when (member SDL.SDLK_LEFT)
+                        <|> pure Polar {theta =  pi/600, radius = 0} . when (member SDL.SDLK_RIGHT)
+                        <|> pure Polar {theta =  0, radius =  0.5}   . when (member SDL.SDLK_UP)
+                        <|> pure Polar {theta =  0, radius = -0.5}   . when (member SDL.SDLK_DOWN)
+                        <|> pure Polar {theta =  0, radius =  0}
+               checkBounds (pos,vel,bound) -- bounce mode
+                      | posInt < -bound + boxRadius && vel < 0  = (fromIntegral (-bound + boxRadius), -energyLoss * vel)
+                      | posInt > bound - boxRadius  && vel > 0  = (fromIntegral ( bound - boxRadius), -energyLoss * vel)
+                      | otherwise                                = (pos,vel)
+                      where posInt = round pos
+               updateVelocity (Polar {theta = t, radius = r}, vec) =
+                      let
+                        Polar {theta = curt, radius = curr} = vecToPolar vec
+                        newt = t + curt
+                        newr = r + curr
+                      in
+                      polarToVec Polar {theta = newt ,radius = newr}
+               updateBearing (Polar {theta = a_t, radius = _a_r}, Polar {theta = b_t, radius = _b_r}) 
+                      = Polar {theta = a_t + b_t, radius = 50}
+
+{-
+_polarUpdateStateWithoutBearing :: (HasTime t s, Monad m) => Wire s () m (Set SDL.SDLKey,Vec) (Vec, Vec)
+_polarUpdateStateWithoutBearing =
     proc (keys, vel) -> do
          accel      <- acceleration -< keys
          (vx,vy)    <- arr updateVelocity -< (accel,vel)
@@ -152,6 +197,7 @@ polarUpdateState =
                         newr = r + curr
                       in
                       polarToVec Polar {theta = newt ,radius = newr}
+-}
 
 
 parseEvents :: Set SDL.SDLKey -> IO (Set SDL.SDLKey)
